@@ -34,6 +34,13 @@ module Tsks
       parsed_res = parse_response res.body
     end
 
+    # TODO: write test
+    def self.put endpoint, token, body
+      uri = URI "#{Request.base_uri}#{endpoint}"
+      res = HTTParty.put uri, body: body, headers: {authorization: "Bearer #{token}"}
+      parsed_res = parse_response res.body
+    end
+
     private
 
     def self.parse_response body

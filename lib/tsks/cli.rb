@@ -6,8 +6,8 @@ require "tsks/actions"
 
 module Tsks
   class CLI < Thor
-    # @setup_folder = File.expand_path "~/.tsks"
-    @setup_folder = File.expand_path "~/.tsks_tmp"
+    # @setup_folder = File.expand_path "~/.tsks_tmp"
+    @setup_folder = File.expand_path "~/.tsks"
 
     def self.setup_folder
       @setup_folder
@@ -159,17 +159,20 @@ module Tsks
       token = File.read File.join CLI.setup_folder, "token"
       Tsks::Actions.update_tsks_with_user_id user_id
       Tsks::Actions.update_server_for_removed_tsks token
-      Tsks::Storage.delete_removed_tsk_ids
+      Tsks::Actions.update_server_for_doing_tsks token
       local_tsks = Tsks::Storage.select_all
+      puts "------------------------------ local_tsks #{local_tsks}"
 
       begin
         get_res = Tsks::Request.get "/tsks", token
         remote_tsks = get_res[:tsks]
+        puts "------------------------------ remote_tsks #{remote_tsks}"
 
         if get_res[:tsks]
           if get_res[:ok] == true
             raw_local_tsks = local_tsks.map {|t| t.reject{|k,_| k == :rowid}}
             local_tsks_to_post = raw_local_tsks - remote_tsks
+            puts "------------------------------ local_tsks_to_post #{local_tsks_to_post}"
 
             tsks_to_post = []
             for local_tsk in local_tsks
@@ -179,14 +182,18 @@ module Tsks
                 end
               end
             end
+            puts "------------------------------ tsks_to_post #{tsks_to_post}"
 
             if tsks_to_post.count > 0
               for tsk in tsks_to_post
                 post_res = Tsks::Request.post "/tsks", token, {tsk: tsk}
                 posted_tsk = post_res[:tsk]
+                puts "------------------------------ posted_tsk #{posted_tsk}"
 
                 if posted_tsk
-                  Tsks::Storage.update_by({rowid: tsk[:rowid]}, {id: posted_tsk[:id]})
+                  Tsks::Storage.update_by({rowid: tsk[:rowid]}, 
+                                          {id: posted_tsk[:id], 
+                                           sync: posted_tsk[:sync]})
                 end
               end
             end
@@ -195,6 +202,9 @@ module Tsks
             updated_local_tsks = Tsks::Storage.select_all
             raw_updated_local_tsks = updated_local_tsks.map {|t| t.reject{|k,_| k == :rowid}}
             remote_tsks_to_storage = remote_tsks - raw_updated_local_tsks
+            puts "------------------------------ updated_local_tsks #{updated_local_tsks}"
+            puts "------------------------------ raw_updated_local_tsks #{raw_updated_local_tsks}"
+            puts "------------------------------ remote_tsks_to_storage #{remote_tsks_to_storage}"
 
             if remote_tsks_to_storage.count > 0
               Tsks::Storage.insert_many remote_tsks_to_storage
@@ -228,7 +238,9 @@ module Tsks
         return puts "tsks was not initialized yet."
       end
 
-      op_status = Tsks::Storage.update id, {status: 'doing'}
+      puts "--------------------------- tsk.id #{id}"
+      op_status = Tsks::Storage.update id, {status: 'doing', sync: 0}
+      puts "--------------------------- op_status #{op_status}"
       if !op_status
         puts "the specified tsk do not exist."
       end

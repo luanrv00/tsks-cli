@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+. ./bin/install
+rm -rf $HOME/.tsks
+tsks init
+tsks register --password=123 --email=$1
+tsks add testing
+tsks list
+

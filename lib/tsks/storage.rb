@@ -12,7 +12,8 @@ module Tsks
           status VARCHAR DEFAULT todo,
           context VARCHAR DEFAULT inbox,
           created_at VARCHAR NOT NULL,
-          updated_at VARCHAR NOT NULL
+          updated_at VARCHAR NOT NULL,
+          sync BOOLEAN DEFAULT false
         )
       SQL
 
@@ -25,19 +26,19 @@ module Tsks
 
     def self.insert tsk, ctx=nil
       storage = get_storage_instance
-      now = Time.now.strftime("%Y-%m-%dT%H:%M:%S.%LZ")
+      now = Time.now.strftime("%Y-%m-%dT%H:%M:%S.%LZ") 
 
       if ctx
         storage.execute("
-          INSERT INTO tsks (tsk, status, context, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?)",
-          [tsk, 'todo', ctx, now, now]
+          INSERT INTO tsks (tsk, context, created_at, updated_at)
+          VALUES (?, ?, ?, ?)",
+          [tsk, ctx, now, now]
          )
       else
         storage.execute("
-          INSERT INTO tsks (tsk, status, created_at, updated_at)
-          VALUES (?, ?, ?, ?)",
-          [tsk, 'todo', now, now]
+          INSERT INTO tsks (tsk, created_at, updated_at)
+          VALUES (?, ?, ?)",
+          [tsk, now, now]
          )
       end
     end
@@ -62,6 +63,11 @@ module Tsks
     end
 
     def self.update tsk_id, params=nil
+      puts "--------------------------- updating #{tsk_id}"
+      puts "--------------------------- params 1st #{params.keys.first}"
+      puts "--------------------------- params 1st #{params.values.first}"
+      puts "--------------------------- params 2nd #{params.keys.last}"
+      puts "--------------------------- params 2nd #{params.values.last.class}"
       storage = get_storage_instance
 
       if params && params.count == 1
@@ -74,6 +80,16 @@ module Tsks
           "#{params.keys.first}=? " \
           "WHERE id=?",
           [params.values.first, tsk_id])
+      elsif params && params.count == 2
+        begin
+          storage.execute(
+            "UPDATE tsks SET " \
+            "#{params.keys.first}=? AND #{params.keys.last}=? " \
+            "WHERE id=?",
+            [params.values.first, params.values.last, tsk_id])
+        rescue => e
+          puts "-------------- ERROR #{e.inspect}"
+        end
       else
         storage.execute "UPDATE tsks SET status='done' WHERE id=?", tsk_id
       end
@@ -120,6 +136,9 @@ module Tsks
       storage = get_storage_instance
       raw_tsks = storage.execute("SELECT rowid, * FROM tsks WHERE status NOT LIKE 'done'")
       tsks = structure_tsks raw_tsks
+      puts "----------------------- raw_tsks #{raw_tsks}"
+      puts "----------------------- structure_tsks #{tsks}"
+      return tsks
     end
 
     def self.delete tsk_id
@@ -144,9 +163,16 @@ module Tsks
       return tsk_ids
     end
 
-    def self.delete_removed_tsk_ids
+    def self.delete_removed_tsks_ids
       storage = get_storage_instance
       storage.execute("DELETE FROM removed_tsks")
+    end
+
+    # TODO: write test
+    def self.select_doing_tsks_not_synced
+      storage = get_storage_instance
+      raw_tsks = storage.execute("SELECT rowid, * FROM tsks WHERE status='doing' AND sync=false")      
+      tsks = structure_tsks raw_tsks
     end
 
     private
@@ -168,6 +194,7 @@ module Tsks
         t[:context] = tsk[5]
         t[:created_at] = tsk[6]
         t[:updated_at] = tsk[7]
+        t[:sync] = tsk[8]
 
         structured_tsks.append t
       end
